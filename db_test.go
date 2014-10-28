@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/metabition/filedb"
+	"github.com/matryer/filedb"
 	"github.com/stretchr/testify/require"
 )
 
