@@ -42,6 +42,28 @@ func TestC(t *testing.T) {
 
 }
 
+func TestCollections(t *testing.T) {
+
+	db, err := filedb.Dial("test/db")
+	require.NoError(t, err)
+	defer db.Close()
+
+	c2, _ := db.C("events")
+	c3, _ := db.C("comments")
+
+	c2.Insert([]byte("something"))
+	c3.Insert([]byte("something"))
+
+	cols, err := db.ColNames()
+	require.NoError(t, err)
+
+	require.Equal(t, 3, len(cols))
+	require.Equal(t, cols[0], "comments")
+	require.Equal(t, cols[1], "events")
+	require.Equal(t, cols[2], "people")
+
+}
+
 func TestInsert(t *testing.T) {
 
 	db, err := filedb.Dial("test/db")

@@ -4,8 +4,11 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"os"
+	"path"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"errors"
@@ -16,9 +19,12 @@ var (
 	ErrDBNotFound = errors.New("database not found; expected existing directory")
 )
 
+// Ext is the extension for filedb files.
+const Ext string = ".filedb"
+
 var (
 	// CNameFormat represents the collection name format.
-	CNameFormat = "%s.filedb"
+	CNameFormat = "%s" + Ext
 )
 
 // DB represents a database of collections.
@@ -38,6 +44,22 @@ func Dial(d string) (*DB, error) {
 		return nil, ErrDBNotFound
 	}
 	return &DB{path: d, cs: make(map[string]*C)}, nil
+}
+
+// ColNames gets a list of all collections in the
+// database.
+func (db *DB) ColNames() ([]string, error) {
+	files, err := ioutil.ReadDir(db.path)
+	if err != nil {
+		return nil, err
+	}
+	var names []string
+	for _, file := range files {
+		if strings.ToLower(path.Ext(file.Name())) == Ext {
+			names = append(names, file.Name()[0:len(file.Name())-len(Ext)])
+		}
+	}
+	return names, nil
 }
 
 // Close closes the database and any open collection

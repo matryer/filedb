@@ -22,3 +22,7 @@ _testmain.go
 *.exe
 *.test
 *.prof
+
+test/db/events.filedb
+
+test/db/comments.filedb
