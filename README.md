@@ -1,4 +1,4 @@
-jsondb
+filedb
 ======
 
-File based JSON storage and querying package
+Simple file based storage and querying package.
