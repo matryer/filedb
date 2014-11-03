@@ -1,2 +1,2 @@
-// Package filedb provides simple file-based JSON storage amd querying.
+// Package filedb provides simple low-performance file-based storage amd querying.
 package filedb
