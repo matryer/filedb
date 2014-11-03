@@ -3,6 +3,7 @@ package filedb
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -10,8 +11,6 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-
-	"errors"
 )
 
 var (
@@ -120,7 +119,13 @@ func (c *C) Drop() error {
 	c.m.Lock()
 	defer c.m.Unlock()
 	c.close()
-	return os.Remove(c.path)
+	if err := os.Remove(c.path); err != nil {
+		// ignore not exist errors - they're fine
+		if !os.IsNotExist(err) {
+			return err
+		}
+	}
+	return nil
 }
 
 // Insert adds a new object to the collection.
@@ -147,10 +152,66 @@ func (c *C) InsertJSON(obj interface{}) error {
 	return c.Insert(b)
 }
 
+// SelectEach calls fn for each item in the collection replacing the
+// data if include is true.
+//     c.SelectEach(func(i int, data []byte) {
+//	     include := true
+//       stop := false
+//       return include, data, stop
+//     })
+// If include is false, the record will be omitted. If stop is true, processing
+// will cease after the current record has been processed.
+func (c *C) SelectEach(fn func(int, []byte) (include bool, data []byte, stop bool)) error {
+	c.m.Lock()
+	defer c.m.Unlock()
+
+	// make temp file
+	tempfile, err := ioutil.TempFile(filepath.Dir(c.path), "filedb")
+	if err != nil {
+		return err
+	}
+	tempfilename := tempfile.Name()
+	defer func() {
+		tempfile.Close()
+		os.Remove(tempfilename)
+	}()
+	f, err := c.file()
+	if err != nil {
+		return err
+	}
+	f.Seek(0, os.SEEK_SET)
+	s := bufio.NewScanner(f)
+	i := 0
+	for s.Scan() {
+		include, data, stop := fn(i, s.Bytes())
+		if include {
+			tempfile.Write(data)
+			_, err := tempfile.Write([]byte("\n"))
+			if err != nil {
+				return err
+			}
+		}
+		if stop {
+			break
+		}
+		i++
+	}
+	if s.Err() != nil {
+		return s.Err()
+	}
+	c.close()
+	os.Remove(c.path)
+	err = os.Rename(tempfilename, c.path)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 // ForEach iterates over every item in the collection calling
 // the function for each row. The function should return true if
 // ForEach is to break (stop iterating) at any time.
-func (c *C) ForEach(fn func([]byte) bool) error {
+func (c *C) ForEach(fn func(int, []byte) bool) error {
 	c.m.Lock()
 	defer c.m.Unlock()
 	f, err := c.file()
@@ -159,13 +220,26 @@ func (c *C) ForEach(fn func([]byte) bool) error {
 	}
 	f.Seek(0, os.SEEK_SET)
 	s := bufio.NewScanner(f)
+	i := 0
 	for s.Scan() {
-		if fn(s.Bytes()) {
+		if fn(i, s.Bytes()) {
 			break
 		}
+		i++
 	}
 	if s.Err() != nil {
 		return s.Err()
 	}
 	return nil
+}
+
+// RemoveEach calls fn for each record in the collection, removing any
+// for which fn returns true.
+// If stop is returned, processing ceases after the current record has
+// been processed.
+func (c *C) RemoveEach(fn func(int, []byte) (bool, bool)) error {
+	return c.SelectEach(func(i int, data []byte) (bool, []byte, bool) {
+		remove, stop := fn(i, data)
+		return !remove, data, stop
+	})
 }
